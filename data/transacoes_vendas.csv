@@ -1,0 +1,12 @@
+id_transacao,data_venda,produto,valor_brl
+1,2023-11-01,Produto A,150.50
+2,2023-11-02,Produto B,300.00
+2,2023-11-02,Produto B,300.00
+3,2023-11-03,Produto C,
+4,2023-11-04,Produto D,5000.00
+5,2023-11-05,Produto E,45.00
+6,2023-11-06,Produto F,1200.50
+7,2023-11-06,Produto F,1200.50
+8,2023-11-07,Produto G,550.00
+9,2023-11-08,Produto H,
+10,2023-11-09,Produto I,95.00
