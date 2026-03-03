@@ -16,9 +16,7 @@ def extract_api_data() -> dict:
     return cotacoes
 
 def extract_csv_data(filepath: str) -> pd.DataFrame:
-    """
-    Lê os dados locais de transações a partir de um arquivo CSV.
-    """
+
     df = pd.read_csv(filepath)
     return df
 
