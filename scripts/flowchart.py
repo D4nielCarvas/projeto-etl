@@ -196,6 +196,7 @@ def generate_etl_dashboard(db_path: str):
         paper_bgcolor=BG_PAPER,
         font=dict(color=TEXT, family="Inter, Arial, sans-serif"),
         legend=dict(
+            title=dict(text="<b>Legenda / Categorias</b>", font=dict(size=13, color="#AAAAAA")),
             bgcolor="rgba(255,255,255,0.05)",
             bordercolor="#444",
             borderwidth=1,
@@ -206,9 +207,25 @@ def generate_etl_dashboard(db_path: str):
         margin=dict(l=40, r=40, t=100, b=40),
     )
 
-    # Eixos com estilo escuro
+    # Eixos com estilo escuro e legendas nos eixos
     fig.update_xaxes(gridcolor=GRID, zerolinecolor=GRID, tickfont=dict(color=TEXT))
     fig.update_yaxes(gridcolor=GRID, zerolinecolor=GRID, tickfont=dict(color=TEXT))
+    
+    # Legendas (títulos) para os eixos de cada gráfico
+    fig.update_xaxes(title_text="Receita (R$)", title_font=dict(size=11, color="#AAAAAA"), row=2, col=2)
+    fig.update_yaxes(title_text="Produto", title_font=dict(size=11, color="#AAAAAA"), row=2, col=2)
+    
+    fig.update_xaxes(title_text="Data", title_font=dict(size=11, color="#AAAAAA"), row=2, col=3)
+    fig.update_yaxes(title_text="Receita (R$)", title_font=dict(size=11, color="#AAAAAA"), row=2, col=3)
+    
+    fig.update_xaxes(title_text="Faixa de Valor", title_font=dict(size=11, color="#AAAAAA"), row=3, col=1)
+    fig.update_yaxes(title_text="Receita Total", title_font=dict(size=11, color="#AAAAAA"), row=3, col=1)
+    
+    fig.update_xaxes(title_text="Faixa de Valor", title_font=dict(size=11, color="#AAAAAA"), row=3, col=2)
+    fig.update_yaxes(title_text="Qtd. Transações", title_font=dict(size=11, color="#AAAAAA"), row=3, col=2)
+
+    fig.update_xaxes(title_text="Faixa de Valor", title_font=dict(size=11, color="#AAAAAA"), row=3, col=3)
+    fig.update_yaxes(title_text="Ticket Médio (R$)", title_font=dict(size=11, color="#AAAAAA"), row=3, col=3)
 
     # Títulos dos subplots em branco
     for ann in fig.layout.annotations:
