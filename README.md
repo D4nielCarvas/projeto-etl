@@ -1,72 +1,61 @@
-# Projeto ETL - Automação e Conversão de Transações Financeiras
+# Auto-EDA Universal 📊 — Pipeline de ETL & Dashboard Financeiro
 
-## 📌 Problema de Negócio
-Uma empresa multinacional realiza vendas no Brasil (em BRL) mas precisa analisar o faturamento consolidado também em Dólar (USD) e Euro (EUR) para reportar à matriz. Atualmente, o processo de conversão e categorização das vendas é feito manualmente em planilhas, o que gera erros, dados duplicados e lentidão.
+## 📌 Visão Geral
+Este projeto é um ecossistema de ETL (Extract, Transform, Load) projetado para automatizar a consolidação de faturamento e gerar dashboards de **Auto-EDA** (Exploratory Data Analysis) de forma instantânea. 
 
-O objetivo deste projeto é construir um Pipeline de ETL (Extract, Transform, Load) em Python que:
-- Extraia cotações de moedas em tempo real via API.
-- Faça a leitura das transações de vendas de um sistema de origem (simulado via CSV).
-- Limpe os dados (tratando valores nulos e possíveis duplicatas originadas no sistema).
-- Aplique regras de negócio para conversão de moedas e categorização do ticket de vendas.
-- Salve os dados processados e confiáveis num banco de dados relacional para consumo de painéis e relatórios.
-- Gere um **dashboard interativo** com gráficos dos resultados reais da execução.
+Originalmente focado em conversão de moedas (BRL para USD/EUR), o sistema evoluiu para um **Analista de Dados Universal** que processa múltiplos formatos e gera visualizações inteligentes em memória.
 
-## 🛠️ Tecnologias Utilizadas
-- **Linguagem:** Python 3
-- **Extração de Dados:** `requests` (consumo de API RESTful) e `pandas` (leitura de arquivos)
-- **Transformação (Manipulação de Dados):** `pandas` e `numpy`
-- **Carga (Banco de Dados):** SQLite e `sqlalchemy` (ORM / Engine para persistência)
-- **Visualização:** `plotly` (dashboard interativo com KPIs e gráficos dos resultados)
+## 🚀 Como Executar o Sistema (Interface Web)
 
-## 🏗️ Estrutura do Projeto (Modularização)
-- `scripts/extract.py`: Módulo responsável pela leitura do arquivo CSV e chamada da 'AwesomeAPI' de moedas.
-- `scripts/transform.py`: Módulo que concentra as regras de negócio, limpeza (remoção de nulos/duplicatas), cálculos de conversão e criação da coluna categórica de faixas de valor.
-- `scripts/load.py`: Módulo que gerencia a conexão com o banco de dados e persistência dos dados transformados usando SQLAlchemy.
-- `scripts/flowchart.py`: Módulo que lê os dados do SQLite e gera um **dashboard interativo** com Plotly, exibindo KPIs e gráficos dos resultados do pipeline.
-- `scripts/main.py`: Orquestrador do pipeline, responsável por integrar e executar o fluxo ETL sequencialmente e chamar o dashboard ao final.
-- `data/`: Diretório onde ficam localizados o arquivo de entrada `.csv` e o banco de dados de saída `.db`.
+Esta é a forma recomendada de utilize o projeto. Permite upload de arquivos e visualização dinâmica.
 
-## 📊 Dashboard de Resultados (etapa View)
+1.  **Prepare o Ambiente:**
+    ```powershell
+    python -m venv .venv
+    .\.venv\Scripts\activate  # Windows
+    # No Linux/Mac: source .venv/bin/activate
+    
+    pip install -r requirements.txt
+    ```
 
-Ao final de cada execução, é gerado automaticamente um **dashboard interativo** no navegador com:
+2.  **Inicie a Aplicação:**
+    ```powershell
+    streamlit run scripts/app.py
+    ```
+    *Acesse a URL gerada (ex: http://localhost:8501) para subir seus dados (CSV, XLSX ou XML).*
 
-| Visualização | Descrição |
-|---|---|
-| 💰 KPI — Receita Total BRL | Total faturado em reais |
-| 💵 KPI — Receita Total USD | Total convertido para dólar |
-| 💶 KPI — Receita Total EUR | Total convertido para euro |
-| 🍩 Distribuição por Faixa | Proporção de transações Small / Medium / High |
-| 📊 Receita por Produto | Faturamento individual de cada produto (BRL) |
-| 📅 Evolução Temporal | Vendas ao longo do período analisado |
-| 🌍 Receita por Moeda/Faixa | Comparativo BRL × USD × EUR por categoria |
-| 🔢 Qtd. por Faixa | Contagem de transações por categoria |
-| 🎫 Ticket Médio por Faixa | Valor médio de venda por categoria |
+---
 
-> O dashboard também pode ser gerado isoladamente após rodar o pipeline: `python scripts/flowchart.py`
+## 🏗️ Arquitetura e Estrutura (Modular)
 
-## 🚀 Como Executar o Projeto
+O projeto segue princípios de **Clean Code** e **SOLID**, garantindo que cada componente tenha uma única responsabilidade:
 
-1. **Clone o repositório e acesse a pasta do projeto.**
+-   **`scripts/app.py`**: Interface visual principal (Streamlit). Gerencia o fluxo de upload e visualização em memória.
+-   **`scripts/extract.py`**: Utiliza o Design Pattern **Factory** para extração dinâmica baseada na extensão do arquivo.
+-   **`scripts/transform.py`**: Camada de lógica de negócio — limpeza, tratamento de tipos, conversão de moedas via API e enriquecimento de dados.
+-   **`scripts/load.py`**: Persistência em banco de dados relacional via SQLAlchemy/SQLite (utilizado no modo CLI).
+-   **`scripts/flowchart.py`**: Motor de visualização que gera dashboards interativos usando **Plotly**.
+-   **`scripts/main.py`**: Orquestrador legitmo para processamento em lote via linha de comando.
 
-2. **Crie um ambiente virtual (opcional, mas recomendado):**
-   ```bash
-   python -m venv venv
-   # Ative no Windows:
-   venv\Scripts\activate
-   # Ative no Linux/Mac:
-   source venv/bin/activate
-   ```
+---
 
-3. **Instale as dependências:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+## 🛠️ Tecnologias Principais
+-   **Data Stack:** `pandas`, `numpy`, `pandera` (validação de dados).
+-   **Web/UI:** `streamlit`, `plotly`.
+-   **DB/ORM:** `SQLAlchemy`, `SQLite`.
+-   **Extração:** `requests` (AwesomeAPI), `openpyxl`, `lxml`.
 
-4. **Execute o pipeline integrado:**
-   ```bash
-   python scripts/main.py
-   ```
+## 📊 Dashboard de Resultados
+Ao carregar seus dados, o sistema gera automaticamente KPIs e gráficos de:
+-   **Perfíl do Dataset:** Completude, tipos de dados e volumetria.
+-   **Distribuições:** Recetas por categoria, ticket médio e distribuição por faixa de valor.
+-   **Evolução:** Séries temporais e performance por produto.
 
-Após a execução:
-- Um arquivo de banco de dados (`vendas.db`) será criado na pasta `data/` com a tabela `tb_vendas_convertidas`.
-- O dashboard interativo será aberto automaticamente no navegador com os resultados da execução.
+---
+
+## ⚙️ Interface de Linha de Comando (Modo CLI)
+Caso deseje processar um arquivo local salvando os resultados em banco de dados:
+```bash
+python scripts/main.py --arquivo data/transacoes_vendas.csv
+```
+*Os resultados serão persistidos em `data/vendas.db`.*
