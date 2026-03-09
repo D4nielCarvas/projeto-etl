@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import Optional
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -8,267 +9,370 @@ from sqlalchemy import create_engine
 
 logger = logging.getLogger(__name__)
 
-# ── Constantes de estilo ─────────────────────────────────────────────────────
-BG_DARK   = "#1A1A2E"
-BG_PAPER  = "#16213E"
-TEXT      = "#E0E0E0"
-GRID      = "#2A2A4A"
-FAIXAS    = ["Small", "Medium", "High"]
-COLORS = {
-    "Small":  "#4A90D9",
-    "Medium": "#E07B39",
-    "High":   "#9B59B6",
-    "brl":    "#4CAF76",
-    "usd":    "#4A90D9",
-    "eur":    "#E07B39",
-}
+# ── Tema Visual Premium ─────────────────────────────────────────────────────
+BG_DARK  = "#0d1117"
+BG_PAPER = "#0d1117"
+BG_CARD  = "#161b22"
+TEXT     = "#e6edf3"
+SUBTEXT  = "#8b949e"
+GRID     = "#21262d"
+SUCCESS  = "#3fb950"
+WARNING  = "#d29922"
+DANGER   = "#f85149"
+
+PALETTE = [
+    "#58a6ff", "#3fb950", "#d29922", "#bc8cff",
+    "#f78166", "#39d353", "#ff9a3c", "#56d364",
+]
 
 
-# ── Carregamento ─────────────────────────────────────────────────────────────
-def _load_dataframe(db_path: str, table_name: str) -> pd.DataFrame:
+# ── Helpers ─────────────────────────────────────────────────────────────────
+def _load_generic_dataframe(db_path: str, table_name: str) -> pd.DataFrame:
+    if not os.path.exists(db_path):
+        return pd.DataFrame()
     engine = create_engine(f"sqlite:///{db_path}")
     try:
-        df = pd.read_sql(f"SELECT * FROM {table_name}", con=engine)  # noqa: S608
-        df["data_venda"] = pd.to_datetime(df["data_venda"])
-        return df
+        return pd.read_sql(f'SELECT * FROM "{table_name}"', con=engine)  # noqa: S608
     finally:
         engine.dispose()
 
 
-# ── KPI traces ───────────────────────────────────────────────────────────────
-def _build_kpi_traces(fig: go.Figure, df: pd.DataFrame) -> None:
-    total_brl    = df["valor_brl"].sum()
-    total_usd    = df["valor_usd"].sum()
-    total_eur    = df["valor_eur"].sum()
-    n_trans      = len(df)
-    ticket_medio = df["valor_brl"].mean()
+def _pick_best_categorical(df: pd.DataFrame, max_unique: int = 25) -> Optional[str]:
+    """Retorna a coluna categorica com melhor cardinalidade para visualizacao."""
+    candidates = df.select_dtypes(include=["object", "category"]).columns
+    best, best_n = None, 0
+    for col in candidates:
+        n = df[col].nunique()
+        if 2 <= n <= max_unique and n > best_n:
+            best, best_n = col, n
+    return best
+
+
+def _completeness_color(value: float) -> str:
+    if value >= 90:
+        return SUCCESS
+    if value >= 60:
+        return WARNING
+    return DANGER
+
+
+def _col_label(col: str) -> str:
+    return col.replace("_", " ").title()
+
+
+# ── Secao 1: KPIs ────────────────────────────────────────────────────────────
+def _build_kpis(fig: go.Figure, df: pd.DataFrame, profile: dict) -> None:
+    numerics     = profile.get("numeric_cols", [])
+    completeness = profile.get("completeness_pct", 100.0)
+
+    kpi_3_val   = len(numerics)
+    kpi_3_label = "Features Numericas<br><sub>Colunas detectadas</sub>"
+
+    if numerics:
+        best_num    = numerics[0]
+        kpi_3_val   = df[best_num].sum()
+        kpi_3_label = f"Soma — {_col_label(best_num)}<br><sub>Coluna principal</sub>"
 
     kpis = [
-        (
-            total_brl, "R$ ", COLORS["brl"],
-            f"Receita Total (BRL)<br><sup>{n_trans} transações</sup>",
-            {
-                "reference":  ticket_medio * n_trans * 0.9,
-                "relative":   True,
-                "valueformat": ".1%",
-                "increasing": {"color": COLORS["brl"]},
-            },
-        ),
-        (total_usd, "$ ",  COLORS["usd"], "Receita Total (USD)<br><sup>Conversão via AwesomeAPI</sup>", None),
-        (total_eur, "€ ",  COLORS["eur"], "Receita Total (EUR)<br><sup>Conversão via AwesomeAPI</sup>", None),
+        (profile["total_rows"], PALETTE[0], "Total de Registros<br><sub>Linhas no DataSet</sub>"),
+        (completeness,          _completeness_color(completeness),
+         f"Completude Geral<br><sub>{completeness}% de celulas preenchidas</sub>"),
+        (kpi_3_val,             PALETTE[2], kpi_3_label),
     ]
 
-    for col, (value, prefix, color, title, delta) in enumerate(kpis, start=1):
-        trace = go.Indicator(
-            mode="number+delta" if delta else "number",
-            value=value,
-            number={"prefix": prefix, "valueformat": ",.2f", "font": {"size": 36, "color": color}},
-            title={"text": title, "font": {"color": TEXT, "size": 13}},
-            **({"delta": delta} if delta else {}),
+    for col_idx, (value, color, title) in enumerate(kpis, start=1):
+        if isinstance(value, float) and abs(value) < 1000:
+            val_fmt = ".1f"
+        elif isinstance(value, (int, float)) and abs(value) >= 1000:
+            val_fmt = ",.0f"
+        else:
+            val_fmt = ""
+
+        fig.add_trace(
+            go.Indicator(
+                mode="number",
+                value=float(value),
+                number={"valueformat": val_fmt,
+                        "font": {"size": 42, "color": color, "family": "Inter, Arial"}},
+                title={"text": title,
+                       "font": {"color": SUBTEXT, "size": 12, "family": "Inter, Arial"}},
+            ),
+            row=1, col=col_idx,
         )
-        fig.add_trace(trace, row=1, col=col)
 
 
-# ── Gráficos analíticos ──────────────────────────────────────────────────────
-def _build_chart_traces(fig: go.Figure, df: pd.DataFrame) -> None:
-    faixa_counts = df["faixa_valor"].value_counts().reindex(FAIXAS)
-    time_series  = df.groupby("data_venda")["valor_brl"].sum().reset_index()
+# ── Secao 2: Qualidade de Dados (full-width) ─────────────────────────────────
+def _build_data_quality_bar(fig: go.Figure, df: pd.DataFrame) -> None:
+    completeness_by_col = ((1 - df.isnull().sum() / max(len(df), 1)) * 100).round(1)
+    completeness_by_col = completeness_by_col.sort_values(ascending=True)
 
-    prod_revenue = (
-        df.groupby("produto")["valor_brl"]
-        .sum()
-        .sort_values(ascending=False)
-        .head(15)
-        .sort_values(ascending=True)   # inverte para barras horizontais lerem de baixo p/ cima
-    )
+    bar_colors = [_completeness_color(v) for v in completeness_by_col.values]
+    labels     = [f"{v:.1f}%" for v in completeness_by_col.values]
 
-    # ── Rosca: faixa_valor ───────────────────────────────────────────────────
     fig.add_trace(
-        go.Pie(
-            labels=faixa_counts.index.tolist(),
-            values=faixa_counts.values,
-            hole=0.52,
-            marker_colors=[COLORS[f] for f in FAIXAS],
-            textfont={"color": "white", "size": 13},
-            hovertemplate="%{label}<br>Qtd: %{value}<br>%{percent}<extra></extra>",
-            showlegend=False,   # ← corrige "trace 4" na legenda
+        go.Bar(
+            y=completeness_by_col.index.tolist(),
+            x=completeness_by_col.values,
+            orientation="h",
+            marker=dict(color=bar_colors, line=dict(color=BG_DARK, width=0.5)),
+            text=labels,
+            textposition="outside",
+            textfont=dict(color=TEXT, size=10),
+            hovertemplate="<b>%{y}</b><br>Completude: %{x:.1f}%<extra></extra>",
+            cliponaxis=False,
         ),
         row=2, col=1,
     )
+    fig.update_xaxes(range=[0, 115], row=2, col=1, showticklabels=False)
+    fig.update_yaxes(tickfont=dict(size=10, color=SUBTEXT), row=2, col=1)
 
-    # ── Barras horizontais: receita por produto ──────────────────────────────
-    fig.add_trace(
-        go.Bar(
-            y=prod_revenue.index.tolist(),
-            x=prod_revenue.values,
-            orientation="h",
-            marker=dict(
-                color=prod_revenue.values,
-                colorscale=[[0, "#4A90D9"], [0.5, "#E07B39"], [1, "#9B59B6"]],
-                showscale=False,
-            ),
 
-            text=[f"R$ {v:,.0f}" for v in prod_revenue.values],
-            textposition="auto",
-            textfont={"color": "white", "size": 10},
-            hovertemplate="%{y}<br>R$ %{x:,.2f}<extra></extra>",
-            showlegend=False,
-        ),
-        row=2, col=2,
-    )
+# ── Secao 3 & 4: Graficos Analiticos ────────────────────────────────────────
+def _build_charts(fig: go.Figure, df: pd.DataFrame, profile: dict) -> None:
+    numerics     = profile.get("numeric_cols", [])
+    categoricals = profile.get("categorical_cols", [])
+    dates        = profile.get("date_cols", [])
+    best_cat     = _pick_best_categorical(df)
 
-    time_weekly = (
-        time_series.set_index("data_venda")["valor_brl"]
-        .resample("W")
-        .sum()
-        .reset_index()
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=time_weekly["data_venda"],
-            y=time_weekly["valor_brl"],
-            mode="lines+markers",
-            line=dict(color=COLORS["brl"], width=2.5),
-
-            marker=dict(size=6, color=COLORS["brl"], line=dict(color="white", width=1)),
-            fill="tozeroy",
-            fillcolor="rgba(76, 175, 118, 0.12)",
-            hovertemplate="%{x|%d/%m/%Y}<br>R$ %{y:,.2f}<extra></extra>",
-
-            showlegend=False,
-        ),
-        row=2, col=3,
-    )
-
-    # ── Barras agrupadas: receita por moeda ──────────────────────────────────
-    for moeda, col_key, prefix in [("BRL", "brl", "R$"), ("USD", "usd", "$"), ("EUR", "eur", "€")]:
-        col_name = f"valor_{moeda.lower()}"
-        vals = [df[df["faixa_valor"] == f][col_name].sum() for f in FAIXAS]
+    # ── Grafico 1 (row=3, col=1): Rosca – distribuicao proporcional ──
+    pie_col = best_cat or (categoricals[0] if categoricals else None)
+    if pie_col:
+        cat_counts = df[pie_col].value_counts().head(7)
         fig.add_trace(
-            go.Bar(
-                name=moeda,
-                x=FAIXAS,
-                y=vals,
-                marker_color=COLORS[col_key],
-                hovertemplate=f"%{{x}}<br>{prefix} %{{y:,.2f}} {moeda}<extra></extra>",
+            go.Pie(
+                labels=cat_counts.index.tolist(),
+                values=cat_counts.values,
+                hole=0.52,
+                marker=dict(colors=PALETTE, line=dict(color=BG_DARK, width=2)),
+                textfont={"color": TEXT, "size": 11},
+                hovertemplate="<b>%{label}</b><br>Qtd: %{value:,}<br>%{percent}<extra></extra>",
+                name=pie_col,
             ),
             row=3, col=1,
         )
+        fig.layout.annotations[3].update(text=f"Proporcao — {_col_label(pie_col)}")
 
-    # ── Barras: contagem por faixa ───────────────────────────────────────────
-    fig.add_trace(
-        go.Bar(
-            x=faixa_counts.index.tolist(),
-            y=faixa_counts.values,
-            marker_color=[COLORS[f] for f in FAIXAS],
-            text=faixa_counts.values,
-            textposition="outside",
-            textfont={"color": TEXT},
-            hovertemplate="%{x}<br>%{y} transações<extra></extra>",
-            showlegend=False,
-        ),
-        row=3, col=2,
-    )
+    # ── Grafico 2 (row=3, col=2): Barras horizontais com gradiente ──
+    if best_cat and numerics:
+        num_col = numerics[0]
+        agg     = df.groupby(best_cat)[num_col].sum().sort_values(ascending=True).tail(10)
+        fig.add_trace(
+            go.Bar(
+                y=agg.index.tolist(),
+                x=agg.values,
+                orientation="h",
+                marker=dict(
+                    color=agg.values,
+                    colorscale=[[0, PALETTE[0]], [0.5, PALETTE[3]], [1, PALETTE[1]]],
+                    showscale=False,
+                ),
+                hovertemplate="<b>%{y}</b><br>Valor: %{x:,.2f}<extra></extra>",
+            ),
+            row=3, col=2,
+        )
+        fig.layout.annotations[4].update(
+            text=f"Top 10 — {_col_label(num_col)} por {_col_label(best_cat)}"
+        )
+    elif len(numerics) >= 2:
+        fig.add_trace(
+            go.Scatter(
+                x=df[numerics[0]], y=df[numerics[1]],
+                mode="markers",
+                marker=dict(color=PALETTE[0], size=5, opacity=0.6),
+                hovertemplate=f"{numerics[0]}: %{{x}}<br>{numerics[1]}: %{{y}}<extra></extra>",
+            ),
+            row=3, col=2,
+        )
+        fig.layout.annotations[4].update(
+            text=f"Dispersao — {_col_label(numerics[0])} x {_col_label(numerics[1])}"
+        )
 
-    # ── Barras: ticket médio por faixa ───────────────────────────────────────
-    ticket_faixa = df.groupby("faixa_valor")["valor_brl"].mean().reindex(FAIXAS)
-    fig.add_trace(
-        go.Bar(
-            x=ticket_faixa.index.tolist(),
-            y=ticket_faixa.values,
-            marker_color=[COLORS[f] for f in FAIXAS],
-            text=[f"R$ {v:,.2f}" for v in ticket_faixa.values],
-            textposition="outside",
-            textfont={"color": TEXT},
-            hovertemplate="%{x}<br>Ticket médio: R$ %{y:,.2f}<extra></extra>",
-            showlegend=False,
-        ),
-        row=3, col=3,
-    )
+    # ── Grafico 3 (row=3, col=3): Serie temporal ou Histograma ──
+    if dates and numerics:
+        date_col = dates[0]
+        num_col  = numerics[0]
+        ts = df.groupby(date_col)[num_col].sum().reset_index().sort_values(date_col)
+        fig.add_trace(
+            go.Scatter(
+                x=ts[date_col], y=ts[num_col],
+                mode="lines",
+                line=dict(color=PALETTE[3], width=2),
+                fill="tozeroy",
+                fillcolor="rgba(188, 140, 255, 0.10)",
+                hovertemplate="%{x|%d/%m/%Y}<br>%{y:,.2f}<extra></extra>",
+            ),
+            row=3, col=3,
+        )
+        fig.layout.annotations[5].update(text=f"Serie Temporal — {_col_label(num_col)}")
+        fig.update_xaxes(
+            rangeslider=dict(visible=True, thickness=0.07,
+                             bgcolor="rgba(255,255,255,0.04)"),
+            row=3, col=3,
+        )
+    elif numerics:
+        num_col = numerics[0]
+        fig.add_trace(
+            go.Histogram(
+                x=df[num_col],
+                marker=dict(color=PALETTE[3], line=dict(color=BG_DARK, width=0.5)),
+                hovertemplate="Faixa: %{x}<br>Frequencia: %{y}<extra></extra>",
+            ),
+            row=3, col=3,
+        )
+        fig.layout.annotations[5].update(text=f"Distribuicao — {_col_label(num_col)}")
+
+    # ── Grafico 4 (row=4, col=1): Count bar segunda categorica ──
+    cat2       = [c for c in categoricals if c != (best_cat or "")]
+    cat_to_use = (cat2[0] if cat2 else best_cat) or (categoricals[0] if categoricals else None)
+    if cat_to_use:
+        counts = df[cat_to_use].value_counts().head(8)
+        fig.add_trace(
+            go.Bar(
+                x=counts.index.tolist(),
+                y=counts.values,
+                marker=dict(color=list(range(len(counts))),
+                            colorscale="Teal", showscale=False),
+                hovertemplate="<b>%{x}</b><br>Contagem: %{y:,}<extra></extra>",
+            ),
+            row=4, col=1,
+        )
+        fig.layout.annotations[6].update(text=f"Contagem — {_col_label(cat_to_use)}")
+
+    # ── Grafico 5 (row=4, col=2): Violin plot ──
+    if numerics and best_cat:
+        num_col  = numerics[0]
+        top_cats = df[best_cat].value_counts().head(6).index.tolist()
+        for i, cat_val in enumerate(top_cats):
+            subset = df[df[best_cat] == cat_val][num_col].dropna()
+            color  = PALETTE[i % len(PALETTE)]
+            r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+            fig.add_trace(
+                go.Violin(
+                    y=subset,
+                    name=str(cat_val),
+                    box_visible=True,
+                    meanline_visible=True,
+                    line_color=color,
+                    fillcolor=f"rgba({r},{g},{b},0.15)",
+                    opacity=0.9,
+                    hovertemplate=f"{best_cat}: {cat_val}<br>%{{y:.2f}}<extra></extra>",
+                ),
+                row=4, col=2,
+            )
+        fig.layout.annotations[7].update(
+            text=f"Violin — {_col_label(num_col)} por {_col_label(best_cat)}"
+        )
+
+    # ── Grafico 6 (row=4, col=3): Heatmap de correlacao ──
+    if len(numerics) >= 2:
+        corr = df[numerics].corr()
+        fig.add_trace(
+            go.Heatmap(
+                z=corr.values,
+                x=[_col_label(c) for c in corr.columns],
+                y=[_col_label(c) for c in corr.index],
+                colorscale="RdBu",
+                zmid=0,
+                text=[[f"{v:.2f}" for v in row] for row in corr.values],
+                texttemplate="%{text}",
+                textfont=dict(size=10),
+                hovertemplate="<b>%{y} x %{x}</b><br>Correlacao: %{z:.2f}<extra></extra>",
+                showscale=True,
+                colorbar=dict(
+                    thickness=12, outlinewidth=0,
+                    tickfont=dict(color=SUBTEXT, size=9),
+                ),
+            ),
+            row=4, col=3,
+        )
+        fig.layout.annotations[8].update(text="Matriz de Correlacao")
 
 
-# ── Função principal ─────────────────────────────────────────────────────────
-def generate_etl_dashboard(db_path: str, table_name: str = "tb_vendas_convertidas") -> None:
-    df = _load_dataframe(db_path, table_name)
+# ── Funcao Principal ─────────────────────────────────────────────────────────
+def generate_etl_dashboard(
+    db_path: str = None,
+    table_name: str = "generic_data",
+    df_in_memory: pd.DataFrame = None,
+    profile: dict = None,
+) -> Optional[go.Figure]:
+    """Gera dashboard Auto-EDA premium. Aceita DataFrame direto ou SQLite."""
+    if df_in_memory is not None:
+        df = df_in_memory
+    elif db_path:
+        df = _load_generic_dataframe(db_path, table_name)
+    else:
+        return None
+
+    if df.empty:
+        logger.warning("Nenhum dado para gerar dashboard.")
+        return None
+
+    if profile is None:
+        from transform import profile_dataframe
+        profile = profile_dataframe(df)
 
     fig = make_subplots(
-        rows=3, cols=3,
-        row_heights=[0.18, 0.45, 0.37],   # ← KPIs menores, gráficos maiores
+        rows=4, cols=3,
+        row_heights=[0.09, 0.12, 0.42, 0.37],
         specs=[
             [{"type": "indicator"}, {"type": "indicator"}, {"type": "indicator"}],
-            [{"type": "pie"},       {"type": "bar"},        {"type": "scatter"}],
-            [{"type": "bar"},       {"type": "bar"},        {"type": "bar"}],
+            [{"type": "xy", "colspan": 3}, None, None],
+            [{"type": "domain"},            {"type": "xy"}, {"type": "xy"}],
+            [{"type": "xy"},                {"type": "xy"}, {"type": "xy"}],
         ],
         subplot_titles=(
             "", "", "",
-            "Distribuição por Faixa de Valor",
-            "Top 15 — Receita por Produto (BRL)",   # ← título atualizado
-            "Evolução Semanal das Vendas",           # ← reflete o resample semanal
-            "Receita Total por Moeda",
-            "Qtd. de Transações por Faixa",
-            "Ticket Médio por Faixa (BRL)",
+            "Qualidade dos Dados — Completude por Coluna",
+            "Painel A", "Painel B", "Painel C",
+            "Painel D", "Painel E", "Painel F",
         ),
-        vertical_spacing=0.09,
-        horizontal_spacing=0.08,
+        vertical_spacing=0.07,
+        horizontal_spacing=0.07,
     )
 
-    _build_kpi_traces(fig, df)
-    _build_chart_traces(fig, df)
+    _build_kpis(fig, df, profile)
 
-    fig.update_yaxes(type="log", row=3, col=1)
+    try:
+        _build_data_quality_bar(fig, df)
+    except Exception as exc:
+        logger.warning("Falha no painel de qualidade: %s", exc)
+
+    try:
+        _build_charts(fig, df, profile)
+    except Exception as exc:
+        logger.warning("Falha ao gerar graficos analiticos: %s", exc)
+
+    n_rows   = profile["total_rows"]
+    n_cols   = profile["total_cols"]
+    comp     = profile["completeness_pct"]
+    subtitle = f"<sup>  {n_rows:,} registros · {n_cols} colunas · {comp}% de completude</sup>"
 
     fig.update_layout(
         title=dict(
-            text=(
-                "📊 Dashboard ETL — Resultados das Transações Financeiras"
-                "<br><sup>Pipeline: Extract → Transform → Load → View</sup>"
-            ),
+            text=f"<b>Auto-EDA Dashboard</b>{subtitle}",
             x=0.5, xanchor="center",
-            font=dict(size=20, color="white", family="Inter, Arial, sans-serif"),
+            font=dict(size=20, color=TEXT, family="Inter, Arial, sans-serif"),
         ),
         plot_bgcolor=BG_DARK,
         paper_bgcolor=BG_PAPER,
         font=dict(color=TEXT, family="Inter, Arial, sans-serif"),
-        legend=dict(
-            title=dict(text="Moeda", font=dict(size=13, color="#AAAAAA")),
-            bgcolor="rgba(255,255,255,0.05)",
-            bordercolor="#444",
-            borderwidth=1,
-            font=dict(color=TEXT),
-            orientation="v",
-            x=1.01,
-            y=0.5,
+        showlegend=False,
+        height=1050,
+        margin=dict(l=60, r=60, t=90, b=50),
+        hoverlabel=dict(
+            bgcolor=BG_CARD,
+            bordercolor=GRID,
+            font=dict(color=TEXT, size=12),
         ),
-        barmode="group",
-        height=950,
-        margin=dict(l=50, r=100, t=110, b=50),
     )
 
-    fig.update_xaxes(gridcolor=GRID, zerolinecolor=GRID, tickfont=dict(color=TEXT))
-    fig.update_yaxes(gridcolor=GRID, zerolinecolor=GRID, tickfont=dict(color=TEXT))
-
-    # Títulos dos eixos
-    fig.update_xaxes(title_text="Receita (R$)",   title_font=dict(size=11, color="#AAAAAA"), row=2, col=2)
-    fig.update_yaxes(title_text="Produto",         title_font=dict(size=11, color="#AAAAAA"), row=2, col=2)
-    fig.update_xaxes(title_text="Semana",          title_font=dict(size=11, color="#AAAAAA"), row=2, col=3)
-    fig.update_yaxes(title_text="Receita (R$)",    title_font=dict(size=11, color="#AAAAAA"), row=2, col=3)
-    fig.update_xaxes(title_text="Faixa de Valor",  title_font=dict(size=11, color="#AAAAAA"), row=3, col=1)
-    fig.update_yaxes(title_text="Receita (log)",   title_font=dict(size=11, color="#AAAAAA"), row=3, col=1)
-    fig.update_xaxes(title_text="Faixa de Valor",  title_font=dict(size=11, color="#AAAAAA"), row=3, col=2)
-    fig.update_yaxes(title_text="Qtd. Transações", title_font=dict(size=11, color="#AAAAAA"), row=3, col=2)
-    fig.update_xaxes(title_text="Faixa de Valor",  title_font=dict(size=11, color="#AAAAAA"), row=3, col=3)
-    fig.update_yaxes(title_text="Ticket Médio (R$)", title_font=dict(size=11, color="#AAAAAA"), row=3, col=3)
+    fig.update_xaxes(gridcolor=GRID, zerolinecolor=GRID,
+                     tickfont=dict(color=SUBTEXT, size=10))
+    fig.update_yaxes(gridcolor=GRID, zerolinecolor=GRID,
+                     tickfont=dict(color=SUBTEXT, size=10))
 
     for ann in fig.layout.annotations:
-        ann.font.color = "#CCCCCC"
-        ann.font.size = 12
+        ann.font.update(color=TEXT, size=12, family="Inter, Arial, sans-serif")
 
-    logger.info("Dashboard gerado com sucesso.")
-    fig.show()
-
-
-if __name__ == "__main__":
-    _script_dir  = os.path.dirname(os.path.abspath(__file__))
-    _project_dir = os.path.dirname(_script_dir)
-    _db_path     = os.path.join(_project_dir, "data", "vendas.db")
-    generate_etl_dashboard(_db_path)
+    logger.info("Dashboard Auto-EDA premium gerado com sucesso.")
+    return fig

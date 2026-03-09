@@ -1,80 +1,148 @@
-# Python
 import logging
+import re
+import unicodedata
+from typing import Tuple
+
 import pandas as pd
-import pandera.pandas as pa
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VENDAS = pa.DataFrameSchema(
-    {
-        "id_transacao": pa.Column(pa.Int, coerce=True),
-        "data_venda": pa.Column(pa.DateTime, coerce=True),
-        "produto": pa.Column(pa.String, coerce=True),
-        # Check garante que não existam vendas com valor negativo
-        "valor_brl": pa.Column(pa.Float, checks=pa.Check.ge(0), coerce=True),
+_DATE_KEYWORDS = {
+    "data", "date", "dt", "mes", "ano", "periodo",
+    "competencia", "vencimento", "criacao", "atualizacao",
+    "emissao", "entrega", "cadastro", "registro",
+}
+
+_DATE_FORMATS = [
+    "%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d",
+    "%d-%m-%Y", "%Y/%m/%d", "%m/%Y", "%Y-%m",
+]
+
+
+def _normalize_column_name(name: str) -> str:
+    """Normaliza nomes: lowercase, sem acentos, underscores."""
+    name = str(name).strip()
+    name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
+    name = re.sub(r"[^\w\s]", "", name)
+    name = re.sub(r"\s+", "_", name).lower()
+    return name or "col_sem_nome"
+
+
+def _try_parse_br_numeric(series: pd.Series) -> pd.Series:
+    """Detecta e converte formato brasileiro (1.234,56) para float."""
+    sample = series.dropna().astype(str).head(100)
+    br_matches = sample.str.match(r"^-?[\d\.]+,\d+$").sum()
+    if br_matches / max(len(sample), 1) > 0.5:
+        cleaned = (
+            series.astype(str)
+            .str.replace(".", "", regex=False)
+            .str.replace(",", ".", regex=False)
+        )
+        return pd.to_numeric(cleaned, errors="coerce")
+    return pd.to_numeric(series, errors="coerce")
+
+
+def _detect_and_parse_dates(df: pd.DataFrame) -> pd.DataFrame:
+    """Detecta colunas de data por nome heuristico e amostragem de conteudo."""
+    for col in df.columns:
+        if df[col].dtype != "object":
+            continue
+
+        col_lower = col.lower()
+        is_date_named = any(kw in col_lower for kw in _DATE_KEYWORDS)
+        sample = df[col].dropna().head(50)
+        if len(sample) == 0:
+            continue
+
+        parsed = None
+        for fmt in _DATE_FORMATS:
+            try:
+                candidate = pd.to_datetime(sample, format=fmt, errors="coerce")
+                if candidate.notna().sum() / len(sample) > 0.7:
+                    parsed = pd.to_datetime(df[col], format=fmt, errors="coerce")
+                    break
+            except Exception:
+                continue
+
+        if parsed is None and is_date_named:
+            try:
+                candidate = pd.to_datetime(sample, infer_datetime_format=True, errors="coerce")
+                if candidate.notna().sum() / len(sample) > 0.6:
+                    parsed = pd.to_datetime(df[col], infer_datetime_format=True, errors="coerce")
+            except Exception:
+                pass
+
+        if parsed is not None:
+            df[col] = parsed
+
+    return df
+
+
+def _detect_and_parse_numerics(df: pd.DataFrame) -> pd.DataFrame:
+    """Converte colunas string com conteudo numerico (padrao BR ou internacional)."""
+    for col in df.columns:
+        if df[col].dtype != "object":
+            continue
+        sample = df[col].dropna().head(100)
+        if len(sample) == 0:
+            continue
+
+        converted = _try_parse_br_numeric(sample)
+        if converted.notna().sum() / len(sample) > 0.7:
+            df[col] = _try_parse_br_numeric(df[col])
+
+    return df
+
+
+def profile_dataframe(df: pd.DataFrame) -> dict:
+    """Gera relatorio de perfil do DataFrame para uso no dashboard."""
+    total_cells = len(df) * len(df.columns)
+    null_sum    = int(df.isnull().sum().sum())
+    completeness = round((1 - null_sum / max(total_cells, 1)) * 100, 1)
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+
+    return {
+        "total_rows":      len(df),
+        "total_cols":      len(df.columns),
+        "numeric_cols":    numeric_cols,
+        "categorical_cols": df.select_dtypes(include=["object", "category"]).columns.tolist(),
+        "date_cols":       df.select_dtypes(include="datetime").columns.tolist(),
+        "null_counts":     df.isnull().sum().to_dict(),
+        "null_pct":        (df.isnull().sum() / max(len(df), 1) * 100).round(1).to_dict(),
+        "unique_counts":   df.nunique().to_dict(),
+        "completeness_pct": completeness,
+        "numeric_stats":   df[numeric_cols].describe().to_dict() if numeric_cols else {},
     }
-)
 
 
-def _clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Remove duplicatas, nulos e padroniza campos de texto/data."""
-    # Separar responsabilidade de limpeza em função própria (SRP)
+def clean_generic_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Limpeza aprimorada: normaliza nomes, datas, numericos e strings."""
+    df.columns = [_normalize_column_name(c) for c in df.columns]
+
+    before = len(df)
     df = df.drop_duplicates().copy()
-    df = df.dropna(subset=["valor_brl"]).copy()
+    logger.info("Duplicatas removidas: %d", before - len(df))
 
-    if "produto" in df.columns:
-        df["produto"] = df["produto"].str.strip().str.title()
+    df = df.dropna(axis=1, how="all")
+    df = _detect_and_parse_dates(df)
+    df = _detect_and_parse_numerics(df)
 
-    if "data_venda" in df.columns:
-        df["data_venda"] = pd.to_datetime(df["data_venda"])
+    for col in df.select_dtypes(include="object").columns:
+        df[col] = df[col].astype(str).str.strip()
+        df[col] = df[col].replace({"nan": None, "None": None, "": None})
 
     df.reset_index(drop=True, inplace=True)
     return df
 
 
-def _convert_currencies(df: pd.DataFrame, cotacoes: dict) -> pd.DataFrame:
-    """Converte valor_brl para USD e EUR com base nas cotações fornecidas."""
-    usd_rate = cotacoes.get("USD")
-    eur_rate = cotacoes.get("EUR")
-
-    # Validação explícita das taxas: evita TypeError ou ZeroDivisionError silencioso
-    if not usd_rate or not eur_rate:
-        raise ValueError(
-            f"Cotações inválidas ou ausentes: USD={usd_rate}, EUR={eur_rate}"
-        )
-
-    df["valor_usd"] = round(df["valor_brl"] / usd_rate, 2)
-    df["valor_eur"] = round(df["valor_brl"] / eur_rate, 2)
-    return df
-
-
-def _categorize_value_range(df: pd.DataFrame) -> pd.DataFrame:
-    """Cria coluna faixa_valor com limites dinâmicos via percentis (p33 e p66)."""
-    p33 = df["valor_brl"].quantile(0.33)
-    p66 = df["valor_brl"].quantile(0.66)
-
-    df["faixa_valor"] = pd.cut(
-        df["valor_brl"],
-        bins=[0, p33, p66, float("inf")],
-        labels=["Small", "Medium", "High"],
+def transform_data(df: pd.DataFrame, cotacoes: dict = None) -> Tuple[pd.DataFrame, dict]:
+    """Pipeline de transformacao generica. Retorna (df_limpo, perfil_do_dataset)."""
+    df_transformed = clean_generic_dataframe(df)
+    profile        = profile_dataframe(df_transformed)
+    logger.info(
+        "Transformacao finalizada: %d registros, %d colunas. Completude: %.1f%%",
+        profile["total_rows"],
+        profile["total_cols"],
+        profile["completeness_pct"],
     )
-    return df
-
-
-def transform_data(df: pd.DataFrame, cotacoes: dict) -> pd.DataFrame:
-    # Passo 1: Limpeza e padronização
-    df_transformed = _clean_dataframe(df)
-    logger.info("Limpeza concluída: %d registros válidos.", len(df_transformed))
-
-    # Passo 2: Validação de contrato de dados com Pandera
-    df_transformed = SCHEMA_VENDAS.validate(df_transformed)
-    logger.info("Validação de schema concluída com sucesso.")
-
-    # Passo 3: Conversão de moedas
-    df_transformed = _convert_currencies(df_transformed, cotacoes)
-
-    # Passo 4: Categorização por faixa de valor (numeração corrigida — estava duplicada)
-    df_transformed = _categorize_value_range(df_transformed)
-    logger.info("Transformação finalizada: %d registros prontos.", len(df_transformed))
-
-    return df_transformed
+    return df_transformed, profile

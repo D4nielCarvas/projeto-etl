@@ -1,8 +1,10 @@
+import argparse
 import logging
 import os
 import sys
+import uuid
 
-from extract import extract_api_data, extract_csv_data
+from extract import extract_api_data, extract_file_data
 from flowchart import generate_etl_dashboard
 from load import load_data_to_sqlite
 from transform import transform_data
@@ -22,41 +24,31 @@ DEFAULT_TABLE = "tb_vendas_convertidas"
 
 
 def run_etl(
-    csv_path: str = DEFAULT_CSV_PATH,
+    input_file: str,
     db_path: str = DEFAULT_DB_PATH,
-    table_name: str = DEFAULT_TABLE,
 ) -> None:
-    logger.info("--- Iniciando o processo ETL ---")
+    logger.info("--- Iniciando Auto-EDA Universal ---")
     
     try:
-        # [E] EXTRAÇÃO
-        logger.info("1. Extração (Extract)...")
-        cotacoes = extract_api_data()
-        logger.info(
-            "Cotações obtidas: Dólar = R$%.2f | Euro = R$%.2f",
-            cotacoes["USD"],
-            cotacoes["EUR"],
-        )
+        # [E] EXTRAÇÃO Multiformato
+        logger.info("1. Extração Dinâmica...")
+        df_raw = extract_file_data(input_file)
 
-        df_raw = extract_csv_data(csv_path)
-        logger.info("Lidas %d transações do CSV bruto.", len(df_raw))
+        # [T] TRANSFORMAÇÃO Genérica
+        logger.info("2. Tratamento Genérico...")
+        df_transformed, profile = transform_data(df_raw)
 
-        # [T] TRANSFORMAÇÃO
-        logger.info("2. Transformação (Transform)...")
-        df_transformed = transform_data(df_raw, cotacoes)
-        logger.info(
-            "Dados limpos: %d registros após remoção de duplicatas/nulos.",
-            len(df_transformed),
-        )
+        # Usar um nome de tabela aleatório para evitar colisão entre diferentes datasets ou sobescrever fixo
+        table_name = f"data_{uuid.uuid4().hex[:8]}"
 
         # [L] CARGA
-        logger.info("3. Carga (Load)...")
+        logger.info("3. Carga no Banco Analítico...")
         load_data_to_sqlite(df_transformed, db_path=db_path, table_name=table_name)
-        logger.info("--- Processo ETL finalizado com SUCESSO! ---")
+        logger.info("--- Dados carregados para visualização! ---")
 
-        # [V] VISUALIZAÇÃO — agora dentro do try/except para capturar falhas
-        logger.info("4. Visualização (View) — Gerando dashboard...")
-        generate_etl_dashboard(db_path=db_path)
+        # [V] VISUALIZAÇÃO Auto-EDA
+        logger.info("4. Visualização (Auto-EDA)...")
+        generate_etl_dashboard(db_path=db_path, table_name=table_name, profile=profile)
 
     except Exception as e:
         # Re-raise após logar: o erro sobe para o chamador e não é engolido silenciosamente
@@ -65,8 +57,23 @@ def run_etl(
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Criador Universal de Dashboards Auto-EDA")
+    parser.add_argument("--arquivo", type=str, default=DEFAULT_CSV_PATH, help="Caminho do arquivo (CSV, XLSX, XML) para gerar o dashboard")
+    args = parser.parse_args()
+
+    # Verifica se o arquivo existe antes de tentar processar
+    if not os.path.exists(args.arquivo):
+        print("\n" + "="*60)
+        print("⚠️  AVISO: ARQUIVO PADRÃO NÃO ENCONTRADO")
+        print("="*60)
+        print(f"O arquivo '{args.arquivo}' não existe.")
+        print("\nComo o sistema foi convertido para uma aplicação Web,")
+        print("recomendamos que você utilize a nova interface visual:")
+        print("\n👉 Comando: streamlit run scripts/app.py")
+        print("="*60 + "\n")
+        sys.exit(0)
+
     try:
-        run_etl()
+        run_etl(input_file=args.arquivo)
     except Exception:
-        # sys.exit(1) sinaliza falha ao sistema operacional (útil em CI/CD e agendadores)
         sys.exit(1)
