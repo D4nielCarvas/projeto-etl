@@ -5,7 +5,7 @@ import sys
 import uuid
 
 from extract import extract_api_data, extract_file_data
-from flowchart import generate_etl_dashboard
+from flowchart import generate_dashboard_from_db
 from load import load_data_to_sqlite
 from transform import transform_data
 
@@ -48,7 +48,7 @@ def run_etl(
 
         # [V] VISUALIZAÇÃO Auto-EDA
         logger.info("4. Visualização (Auto-EDA)...")
-        generate_etl_dashboard(db_path=db_path, table_name=table_name, profile=profile)
+        generate_dashboard_from_db(db_path=db_path, table_name=table_name)
 
     except Exception as e:
         # Re-raise após logar: o erro sobe para o chamador e não é engolido silenciosamente

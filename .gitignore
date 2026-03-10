@@ -1,7 +1,24 @@
+# Ambientes virtuais
 .venv/
+scripts/.venv/
+
+# Cache Python
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Banco de dados gerado em runtime
+data/*.db
+
+# Variáveis de ambiente
 .env
+.env.local
+
+# Ferramentas de teste e cobertura
 .pytest_cache/
+.coverage
+htmlcov/
+
+# Editores
 .vscode/
+.idea/

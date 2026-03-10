@@ -66,9 +66,10 @@ def _detect_and_parse_dates(df: pd.DataFrame) -> pd.DataFrame:
 
         if parsed is None and is_date_named:
             try:
-                candidate = pd.to_datetime(sample, infer_datetime_format=True, errors="coerce")
+                # infer_datetime_format foi removido no Pandas 2.0 — inferência é padrão
+                candidate = pd.to_datetime(sample, errors="coerce")
                 if candidate.notna().sum() / len(sample) > 0.6:
-                    parsed = pd.to_datetime(df[col], infer_datetime_format=True, errors="coerce")
+                    parsed = pd.to_datetime(df[col], errors="coerce")
             except Exception:
                 pass
 

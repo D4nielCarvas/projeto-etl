@@ -1,6 +1,10 @@
+import logging
 import streamlit as st
 import pandas as pd
 from typing import Optional, Tuple
+
+logger = logging.getLogger(__name__)
+
 
 st.set_page_config(
     page_title="Auto-EDA Dashboard Builder",
@@ -11,7 +15,7 @@ st.set_page_config(
 
 from extract import ExtractorFactory
 from transform import transform_data
-from flowchart import generate_etl_dashboard
+from flowchart import generate_dashboard_from_memory
 
 MAX_FILE_SIZE_MB = 50
 
@@ -42,8 +46,11 @@ def carregar_dados_memoria(
     """Extrai, transforma e devolve (DataFrame, perfil)."""
     try:
         nome_arquivo = uploaded_file.name
+        logger.info("Iniciando processamento do arquivo: %s (%.2f MB)",
+                    nome_arquivo, uploaded_file.size / (1024 * 1024))
 
         if uploaded_file.size > MAX_FILE_SIZE_MB * 1024 * 1024:
+            logger.warning("Arquivo '%s' excede o limite de %dMB.", nome_arquivo, MAX_FILE_SIZE_MB)
             st.error(f"Arquivo muito grande. Limite: {MAX_FILE_SIZE_MB}MB.")
             return None
 
@@ -53,6 +60,9 @@ def carregar_dados_memoria(
 
         df_raw              = extractor.extract(uploaded_file)
         df_transformed, profile = transform_data(df_raw)
+        logger.info("Arquivo '%s' processado: %d linhas, %d colunas, %.1f%% completude.",
+                    nome_arquivo, profile['total_rows'], profile['total_cols'],
+                    profile['completeness_pct'])
 
         st.toast(
             f"{profile['total_rows']:,} registros prontos! "
@@ -62,6 +72,7 @@ def carregar_dados_memoria(
         return df_transformed, profile
 
     except Exception as exc:
+        logger.error("Erro ao processar o arquivo '%s': %s", getattr(uploaded_file, 'name', '?'), exc, exc_info=True)
         st.error(f"Erro ao processar o arquivo: {exc}")
         return None
 
@@ -140,8 +151,8 @@ def main() -> None:
 
         profile = st.session_state.get("profile")
 
-        fig = generate_etl_dashboard(
-            df_in_memory=st.session_state["df_master"],
+        fig = generate_dashboard_from_memory(
+            df=st.session_state["df_master"],
             profile=profile,
         )
 

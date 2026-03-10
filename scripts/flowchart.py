@@ -9,21 +9,27 @@ from sqlalchemy import create_engine
 
 logger = logging.getLogger(__name__)
 
-# ── Tema Visual Premium ─────────────────────────────────────────────────────
-BG_DARK  = "#0d1117"
-BG_PAPER = "#0d1117"
-BG_CARD  = "#161b22"
-TEXT     = "#e6edf3"
-SUBTEXT  = "#8b949e"
-GRID     = "#21262d"
-SUCCESS  = "#3fb950"
-WARNING  = "#d29922"
-DANGER   = "#f85149"
+from dataclasses import dataclass, field
+from typing import List
 
-PALETTE = [
-    "#58a6ff", "#3fb950", "#d29922", "#bc8cff",
-    "#f78166", "#39d353", "#ff9a3c", "#56d364",
-]
+@dataclass
+class ThemeConfig:
+    """Configuração do tema do dashboard para fácil substituição/extensão."""
+    BG_DARK: str  = "#0d1117"
+    BG_PAPER: str = "#0d1117"
+    BG_CARD: str  = "#161b22"
+    TEXT: str     = "#e6edf3"
+    SUBTEXT: str  = "#8b949e"
+    GRID: str     = "#21262d"
+    SUCCESS: str  = "#3fb950"
+    WARNING: str  = "#d29922"
+    DANGER: str   = "#f85149"
+    PALETTE: List[str] = field(default_factory=lambda: [
+        "#58a6ff", "#3fb950", "#d29922", "#bc8cff",
+        "#f78166", "#39d353", "#ff9a3c", "#56d364",
+    ])
+
+THEME = ThemeConfig()
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -50,10 +56,10 @@ def _pick_best_categorical(df: pd.DataFrame, max_unique: int = 25) -> Optional[s
 
 def _completeness_color(value: float) -> str:
     if value >= 90:
-        return SUCCESS
+        return THEME.SUCCESS
     if value >= 60:
-        return WARNING
-    return DANGER
+        return THEME.WARNING
+    return THEME.DANGER
 
 
 def _col_label(col: str) -> str:
@@ -62,6 +68,12 @@ def _col_label(col: str) -> str:
 
 # ── Secao 1: KPIs ────────────────────────────────────────────────────────────
 def _build_kpis(fig: go.Figure, df: pd.DataFrame, profile: dict) -> None:
+    """Renderiza 3 indicadores KPI na linha 1 do dashboard (indicadores Plotly).
+
+    KPI 1: total de registros.
+    KPI 2: completude geral do dataset.
+    KPI 3: soma da primeira coluna numérica (ou contagem de features numéricas).
+    """
     numerics     = profile.get("numeric_cols", [])
     completeness = profile.get("completeness_pct", 100.0)
 
@@ -74,10 +86,10 @@ def _build_kpis(fig: go.Figure, df: pd.DataFrame, profile: dict) -> None:
         kpi_3_label = f"Soma — {_col_label(best_num)}<br><sub>Coluna principal</sub>"
 
     kpis = [
-        (profile["total_rows"], PALETTE[0], "Total de Registros<br><sub>Linhas no DataSet</sub>"),
+        (profile["total_rows"], THEME.PALETTE[0], "Total de Registros<br><sub>Linhas no DataSet</sub>"),
         (completeness,          _completeness_color(completeness),
          f"Completude Geral<br><sub>{completeness}% de celulas preenchidas</sub>"),
-        (kpi_3_val,             PALETTE[2], kpi_3_label),
+        (kpi_3_val,             THEME.PALETTE[2], kpi_3_label),
     ]
 
     for col_idx, (value, color, title) in enumerate(kpis, start=1):
@@ -95,7 +107,7 @@ def _build_kpis(fig: go.Figure, df: pd.DataFrame, profile: dict) -> None:
                 number={"valueformat": val_fmt,
                         "font": {"size": 42, "color": color, "family": "Inter, Arial"}},
                 title={"text": title,
-                       "font": {"color": SUBTEXT, "size": 12, "family": "Inter, Arial"}},
+                       "font": {"color": THEME.SUBTEXT, "size": 12, "family": "Inter, Arial"}},
             ),
             row=1, col=col_idx,
         )
@@ -103,6 +115,10 @@ def _build_kpis(fig: go.Figure, df: pd.DataFrame, profile: dict) -> None:
 
 # ── Secao 2: Qualidade de Dados (full-width) ─────────────────────────────────
 def _build_data_quality_bar(fig: go.Figure, df: pd.DataFrame) -> None:
+    """Renderiza barra horizontal de completude por coluna na linha 2 do dashboard.
+
+    Cores: verde (>=90%), amarelo (>=60%), vermelho (<60%).
+    """
     completeness_by_col = ((1 - df.isnull().sum() / max(len(df), 1)) * 100).round(1)
     completeness_by_col = completeness_by_col.sort_values(ascending=True)
 
@@ -114,21 +130,30 @@ def _build_data_quality_bar(fig: go.Figure, df: pd.DataFrame) -> None:
             y=completeness_by_col.index.tolist(),
             x=completeness_by_col.values,
             orientation="h",
-            marker=dict(color=bar_colors, line=dict(color=BG_DARK, width=0.5)),
+            marker=dict(color=bar_colors, line=dict(color=THEME.BG_DARK, width=0.5)),
             text=labels,
             textposition="outside",
-            textfont=dict(color=TEXT, size=10),
+            textfont=dict(color=THEME.TEXT, size=10),
             hovertemplate="<b>%{y}</b><br>Completude: %{x:.1f}%<extra></extra>",
             cliponaxis=False,
         ),
         row=2, col=1,
     )
     fig.update_xaxes(range=[0, 115], row=2, col=1, showticklabels=False)
-    fig.update_yaxes(tickfont=dict(size=10, color=SUBTEXT), row=2, col=1)
+    fig.update_yaxes(tickfont=dict(size=10, color=THEME.SUBTEXT), row=2, col=1)
 
 
 # ── Secao 3 & 4: Graficos Analiticos ────────────────────────────────────────
 def _build_charts(fig: go.Figure, df: pd.DataFrame, profile: dict) -> None:
+    """Renderiza os 6 painéis analíticos (linhas 3 e 4) do dashboard.
+
+    Painel A (row=3, col=1): Rosca — distribuição proporcional por categoria.
+    Painel B (row=3, col=2): Barras horizontais Top 10 ou Scatter se só numérico.
+    Painel C (row=3, col=3): Série temporal ou Histograma.
+    Painel D (row=4, col=1): Contagem por segunda categoria.
+    Painel E (row=4, col=2): Violin plot por categoria.
+    Painel F (row=4, col=3): Heatmap de correlação entre numéricos.
+    """
     numerics     = profile.get("numeric_cols", [])
     categoricals = profile.get("categorical_cols", [])
     dates        = profile.get("date_cols", [])
@@ -143,8 +168,8 @@ def _build_charts(fig: go.Figure, df: pd.DataFrame, profile: dict) -> None:
                 labels=cat_counts.index.tolist(),
                 values=cat_counts.values,
                 hole=0.52,
-                marker=dict(colors=PALETTE, line=dict(color=BG_DARK, width=2)),
-                textfont={"color": TEXT, "size": 11},
+                marker=dict(colors=THEME.PALETTE, line=dict(color=THEME.BG_DARK, width=2)),
+                textfont={"color": THEME.TEXT, "size": 11},
                 hovertemplate="<b>%{label}</b><br>Qtd: %{value:,}<br>%{percent}<extra></extra>",
                 name=pie_col,
             ),
@@ -163,7 +188,7 @@ def _build_charts(fig: go.Figure, df: pd.DataFrame, profile: dict) -> None:
                 orientation="h",
                 marker=dict(
                     color=agg.values,
-                    colorscale=[[0, PALETTE[0]], [0.5, PALETTE[3]], [1, PALETTE[1]]],
+                    colorscale=[[0, THEME.PALETTE[0]], [0.5, THEME.PALETTE[3]], [1, THEME.PALETTE[1]]],
                     showscale=False,
                 ),
                 hovertemplate="<b>%{y}</b><br>Valor: %{x:,.2f}<extra></extra>",
@@ -178,7 +203,7 @@ def _build_charts(fig: go.Figure, df: pd.DataFrame, profile: dict) -> None:
             go.Scatter(
                 x=df[numerics[0]], y=df[numerics[1]],
                 mode="markers",
-                marker=dict(color=PALETTE[0], size=5, opacity=0.6),
+                marker=dict(color=THEME.PALETTE[0], size=5, opacity=0.6),
                 hovertemplate=f"{numerics[0]}: %{{x}}<br>{numerics[1]}: %{{y}}<extra></extra>",
             ),
             row=3, col=2,
@@ -196,7 +221,7 @@ def _build_charts(fig: go.Figure, df: pd.DataFrame, profile: dict) -> None:
             go.Scatter(
                 x=ts[date_col], y=ts[num_col],
                 mode="lines",
-                line=dict(color=PALETTE[3], width=2),
+                line=dict(color=THEME.PALETTE[3], width=2),
                 fill="tozeroy",
                 fillcolor="rgba(188, 140, 255, 0.10)",
                 hovertemplate="%{x|%d/%m/%Y}<br>%{y:,.2f}<extra></extra>",
@@ -214,7 +239,7 @@ def _build_charts(fig: go.Figure, df: pd.DataFrame, profile: dict) -> None:
         fig.add_trace(
             go.Histogram(
                 x=df[num_col],
-                marker=dict(color=PALETTE[3], line=dict(color=BG_DARK, width=0.5)),
+                marker=dict(color=THEME.PALETTE[3], line=dict(color=THEME.BG_DARK, width=0.5)),
                 hovertemplate="Faixa: %{x}<br>Frequencia: %{y}<extra></extra>",
             ),
             row=3, col=3,
@@ -244,7 +269,7 @@ def _build_charts(fig: go.Figure, df: pd.DataFrame, profile: dict) -> None:
         top_cats = df[best_cat].value_counts().head(6).index.tolist()
         for i, cat_val in enumerate(top_cats):
             subset = df[df[best_cat] == cat_val][num_col].dropna()
-            color  = PALETTE[i % len(PALETTE)]
+            color  = THEME.PALETTE[i % len(THEME.PALETTE)]
             r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
             fig.add_trace(
                 go.Violin(
@@ -280,7 +305,7 @@ def _build_charts(fig: go.Figure, df: pd.DataFrame, profile: dict) -> None:
                 showscale=True,
                 colorbar=dict(
                     thickness=12, outlinewidth=0,
-                    tickfont=dict(color=SUBTEXT, size=9),
+                    tickfont=dict(color=THEME.SUBTEXT, size=9),
                 ),
             ),
             row=4, col=3,
@@ -288,21 +313,8 @@ def _build_charts(fig: go.Figure, df: pd.DataFrame, profile: dict) -> None:
         fig.layout.annotations[8].update(text="Matriz de Correlacao")
 
 
-# ── Funcao Principal ─────────────────────────────────────────────────────────
-def generate_etl_dashboard(
-    db_path: str = None,
-    table_name: str = "generic_data",
-    df_in_memory: pd.DataFrame = None,
-    profile: dict = None,
-) -> Optional[go.Figure]:
-    """Gera dashboard Auto-EDA premium. Aceita DataFrame direto ou SQLite."""
-    if df_in_memory is not None:
-        df = df_in_memory
-    elif db_path:
-        df = _load_generic_dataframe(db_path, table_name)
-    else:
-        return None
-
+def _build_dashboard_figure(df: pd.DataFrame, profile: dict) -> Optional[go.Figure]:
+    """Helper que constrói o objeto Figure a partir de um dataframe e perfil limpos."""
     if df.empty:
         logger.warning("Nenhum dado para gerar dashboard.")
         return None
@@ -351,28 +363,40 @@ def generate_etl_dashboard(
         title=dict(
             text=f"<b>Auto-EDA Dashboard</b>{subtitle}",
             x=0.5, xanchor="center",
-            font=dict(size=20, color=TEXT, family="Inter, Arial, sans-serif"),
+            font=dict(size=20, color=THEME.TEXT, family="Inter, Arial, sans-serif"),
         ),
-        plot_bgcolor=BG_DARK,
-        paper_bgcolor=BG_PAPER,
-        font=dict(color=TEXT, family="Inter, Arial, sans-serif"),
+        plot_bgcolor=THEME.BG_DARK,
+        paper_bgcolor=THEME.BG_PAPER,
+        font=dict(color=THEME.TEXT, family="Inter, Arial, sans-serif"),
         showlegend=False,
         height=1050,
         margin=dict(l=60, r=60, t=90, b=50),
         hoverlabel=dict(
-            bgcolor=BG_CARD,
-            bordercolor=GRID,
-            font=dict(color=TEXT, size=12),
+            bgcolor=THEME.BG_CARD,
+            bordercolor=THEME.GRID,
+            font=dict(color=THEME.TEXT, size=12),
         ),
     )
 
-    fig.update_xaxes(gridcolor=GRID, zerolinecolor=GRID,
-                     tickfont=dict(color=SUBTEXT, size=10))
-    fig.update_yaxes(gridcolor=GRID, zerolinecolor=GRID,
-                     tickfont=dict(color=SUBTEXT, size=10))
+    fig.update_xaxes(gridcolor=THEME.GRID, zerolinecolor=THEME.GRID,
+                     tickfont=dict(color=THEME.SUBTEXT, size=10))
+    fig.update_yaxes(gridcolor=THEME.GRID, zerolinecolor=THEME.GRID,
+                     tickfont=dict(color=THEME.SUBTEXT, size=10))
 
     for ann in fig.layout.annotations:
-        ann.font.update(color=TEXT, size=12, family="Inter, Arial, sans-serif")
+        ann.font.update(color=THEME.TEXT, size=12, family="Inter, Arial, sans-serif")
 
     logger.info("Dashboard Auto-EDA premium gerado com sucesso.")
     return fig
+
+
+def generate_dashboard_from_memory(df: pd.DataFrame, profile: dict = None) -> Optional[go.Figure]:
+    """Gera dashboard Auto-EDA a partir de um DataFrame em memória (Web)."""
+    return _build_dashboard_figure(df, profile)
+
+
+def generate_dashboard_from_db(db_path: str, table_name: str = "generic_data") -> Optional[go.Figure]:
+    """Gera dashboard Auto-EDA obtendo os dados de um SQLite (CLI)."""
+    df = _load_generic_dataframe(db_path, table_name)
+    return _build_dashboard_figure(df, None)
+

@@ -1,61 +1,91 @@
 # Auto-EDA Universal 📊 — Pipeline de ETL & Dashboard Financeiro
 
 ## 📌 Visão Geral
-Este projeto é um ecossistema de ETL (Extract, Transform, Load) projetado para automatizar a consolidação de faturamento e gerar dashboards de **Auto-EDA** (Exploratory Data Analysis) de forma instantânea. 
-
-Originalmente focado em conversão de moedas (BRL para USD/EUR), o sistema evoluiu para um **Analista de Dados Universal** que processa múltiplos formatos e gera visualizações inteligentes em memória.
-
-## 🚀 Como Executar o Sistema (Interface Web)
-
-Esta é a forma recomendada de utilize o projeto. Permite upload de arquivos e visualização dinâmica.
-
-1.  **Prepare o Ambiente:**
-    ```powershell
-    python -m venv .venv
-    .\.venv\Scripts\activate  # Windows
-    # No Linux/Mac: source .venv/bin/activate
-    
-    pip install -r requirements.txt
-    ```
-
-2.  **Inicie a Aplicação:**
-    ```powershell
-    streamlit run scripts/app.py
-    ```
-    *Acesse a URL gerada (ex: http://localhost:8501) para subir seus dados (CSV, XLSX ou XML).*
+Este projeto é um ecossistema de ETL (Extract, Transform, Load) que automatiza a análise e visualização de dados tabulares. O sistema processa múltiplos formatos de arquivo (CSV, XLSX, XLS, XML) e gera dashboards de **Auto-EDA** (Exploratory Data Analysis) de forma automática.
 
 ---
 
-## 🏗️ Arquitetura e Estrutura (Modular)
+## 🚀 Como Executar (Interface Web — Recomendado)
 
-O projeto segue princípios de **Clean Code** e **SOLID**, garantindo que cada componente tenha uma única responsabilidade:
+### 1. Prepare o Ambiente
 
--   **`scripts/app.py`**: Interface visual principal (Streamlit). Gerencia o fluxo de upload e visualização em memória.
--   **`scripts/extract.py`**: Utiliza o Design Pattern **Factory** para extração dinâmica baseada na extensão do arquivo.
--   **`scripts/transform.py`**: Camada de lógica de negócio — limpeza, tratamento de tipos, conversão de moedas via API e enriquecimento de dados.
--   **`scripts/load.py`**: Persistência em banco de dados relacional via SQLAlchemy/SQLite (utilizado no modo CLI).
--   **`scripts/flowchart.py`**: Motor de visualização que gera dashboards interativos usando **Plotly**.
--   **`scripts/main.py`**: Orquestrador legitmo para processamento em lote via linha de comando.
+```powershell
+python -m venv .venv
+.\.venv\Scripts\activate
 
----
-
-## 🛠️ Tecnologias Principais
--   **Data Stack:** `pandas`, `numpy`, `pandera` (validação de dados).
--   **Web/UI:** `streamlit`, `plotly`.
--   **DB/ORM:** `SQLAlchemy`, `SQLite`.
--   **Extração:** `requests` (AwesomeAPI), `openpyxl`, `lxml`.
-
-## 📊 Dashboard de Resultados
-Ao carregar seus dados, o sistema gera automaticamente KPIs e gráficos de:
--   **Perfíl do Dataset:** Completude, tipos de dados e volumetria.
--   **Distribuições:** Recetas por categoria, ticket médio e distribuição por faixa de valor.
--   **Evolução:** Séries temporais e performance por produto.
-
----
-
-## ⚙️ Interface de Linha de Comando (Modo CLI)
-Caso deseje processar um arquivo local salvando os resultados em banco de dados:
-```bash
-python scripts/main.py --arquivo data/transacoes_vendas.csv
+pip install -r requirements.txt
 ```
-*Os resultados serão persistidos em `data/vendas.db`.*
+
+### 2. Inicie a Aplicação
+
+```powershell
+streamlit run scripts/app.py
+```
+
+Acesse `http://localhost:8501`, faça upload de qualquer planilha e o dashboard será gerado automaticamente.
+
+> **📂 Arquivo de exemplo:** `data/exemplo.csv` — pronto para testar sem precisar de seus próprios dados.
+
+---
+
+## 🏗️ Arquitetura Modular
+
+O projeto segue os princípios de **Clean Code** e **SOLID**, com responsabilidade única por módulo:
+
+| Arquivo | Responsabilidade | Design Pattern |
+|---|---|---|
+| `scripts/app.py` | Interface visual (Streamlit), upload e navegação | — |
+| `scripts/extract.py` | Extração multiformato (CSV, XLSX, XLS, XML) | **Strategy + Factory** |
+| `scripts/transform.py` | Limpeza, normalização, inferência de tipos | — |
+| `scripts/load.py` | Persistência SQLite (modo CLI) | — |
+| `scripts/flowchart.py` | Geração de dashboard interativo com Plotly | — |
+| `scripts/main.py` | Orquestrador para processamento em lote via CLI | — |
+
+---
+
+## 🛠️ Tecnologias
+
+| Camada | Libs |
+|---|---|
+| Data | `pandas`, `numpy` |
+| Web/UI | `streamlit`, `plotly` |
+| DB/ORM | `SQLAlchemy`, `SQLite` |
+| Leitura | `openpyxl` (xlsx), `lxml` (xml) |
+| Testes | `pytest` |
+
+---
+
+## 📊 Dashboard Auto-EDA
+
+Ao carregar seus dados, o sistema gera automaticamente:
+
+- **KPIs** — total de registros, completude e soma da coluna principal
+- **Qualidade dos Dados** — completude por coluna (verde/amarelo/vermelho)
+- **Distribuição** — gráfico de rosca pela categoria principal
+- **Ranking** — Top 10 categorias por valor
+- **Série Temporal** — evolução ao longo do tempo (se houver coluna de data)
+- **Violin Plot** — distribuição por categoria
+- **Heatmap de Correlação** — entrelaçamento entre variáveis numéricas
+
+---
+
+## ⚙️ Modo CLI (Linha de Comando)
+
+Para processar um arquivo local e persistir o resultado em SQLite:
+
+```powershell
+# Da raiz do projeto
+python scripts/main.py --arquivo data/exemplo.csv
+```
+
+Os resultados serão salvos em `data/vendas.db`.
+
+---
+
+## 🧪 Testes Automatizados
+
+```powershell
+pytest tests/ -v
+```
+
+Os testes cobrem as principais funções de transformação: normalização de colunas, parsing de números BR, detecção de datas e limpeza genérica de DataFrames.

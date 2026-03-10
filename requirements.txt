@@ -1,9 +1,13 @@
+# ETL core
 pandas>=2.0.0
-requests>=2.31.0
-SQLAlchemy>=2.0.0
 numpy>=1.24.0
+SQLAlchemy>=2.0.0
+openpyxl>=3.1.0   # leitura de .xlsx
+lxml>=4.9.0       # leitura de .xml
+
+# Dashboard
 plotly>=5.18.0
-pandera>=0.17.0
-openpyxl>=3.1.0
-lxml>=4.9.0
 streamlit>=1.31.0
+
+# Testes
+pytest>=7.4.0
