@@ -1,4 +1,4 @@
-# Auto-EDA Universal 📊 — Pipeline de ETL & Dashboard Financeiro
+# Auto-EDA Universal 📊 — Pipeline de ETL & Dashboard
 
 ## 📌 Visão Geral
 Este projeto é um ecossistema de ETL (Extract, Transform, Load) que automatiza a análise e visualização de dados tabulares. O sistema processa múltiplos formatos de arquivo (CSV, XLSX, XLS, XML) e gera dashboards de **Auto-EDA** (Exploratory Data Analysis) de forma automática.
